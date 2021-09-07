@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -155,11 +156,46 @@ func pacman(args ...string) {
 	}
 }
 
+func removeSuperfluousPackages() {
+	var output strings.Builder
+	cmd := exec.Command("sudo", "pacman", "-Qqtd")
+	cmd.Stdout = &output
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		if err, ok := err.(*exec.ExitError); ok {
+			if err.ExitCode() == 1 {
+				fmt.Println("No superfluous packages.")
+				return
+			}
+		}
+		log.Println(err)
+		return
+	}
+	pkgs := strings.Split(strings.TrimRight(output.String(), "\n"), "\n")
+	if len(pkgs) == 0 {
+		return
+	}
+
+	fmt.Println("Superfluous packages can be removed:")
+	args := []string{"pacman", "-Rs"}
+	args = append(args, pkgs...)
+	cmd = exec.Command("sudo", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	if err != nil {
+		log.Println(err)
+	}
+}
+
 func main() {
 	newsCh := make(chan string, 10)
 	go readNews(newsCh)
 	pacman("-Sc", "--noconfirm")
 	pacman("-Syu", "--noconfirm")
+	removeSuperfluousPackages()
 	fmt.Println("\nArch Linux news:")
 	for s := range newsCh {
 		fmt.Printf("  - %s\n", s)
