@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 )
+
+const PACMAN_LOGFILE_PATH = "/var/log/pacman.log"
+const NEWSFEED_URL = "https://archlinux.org/feeds/news/"
 
 type Feed struct {
 	XMLName xml.Name   `xml:"rss"`
@@ -58,7 +61,7 @@ func stateFileName() string {
 func readState() State {
 	f, err := os.Open(stateFileName())
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 		return State{} // ignore err
 	}
 	defer f.Close()
@@ -70,14 +73,12 @@ func readState() State {
 func writeState(state *State) {
 	f, err := os.Create(stateFileName())
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 		return
 	}
 	defer f.Close()
 	json.NewEncoder(f).Encode(state)
 }
-
-const NEWSFEED_URL = "https://archlinux.org/feeds/news/"
 
 func readNews(ch chan<- string) {
 	defer close(ch)
@@ -144,19 +145,16 @@ func readNews(ch chan<- string) {
 	}
 }
 
-func pacman(args ...string) {
+func pacman(args ...string) error {
 	cmdArgs := append([]string{"pacman"}, args...)
 	cmd := exec.Command("sudo", cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
-		log.Println(err)
-	}
+	return cmd.Run()
 }
 
-func removeSuperfluousPackages() {
+func removeSuperfluousPackages() error {
 	var output strings.Builder
 	cmd := exec.Command("sudo", "pacman", "-Qqtd")
 	cmd.Stdout = &output
@@ -166,15 +164,14 @@ func removeSuperfluousPackages() {
 		if err, ok := err.(*exec.ExitError); ok {
 			if err.ExitCode() == 1 {
 				fmt.Println("No superfluous packages.")
-				return
+				return nil
 			}
 		}
-		log.Println(err)
-		return
+		return err
 	}
 	pkgs := strings.Split(strings.TrimRight(output.String(), "\n"), "\n")
 	if len(pkgs) == 0 {
-		return
+		return nil
 	}
 
 	fmt.Println("Superfluous packages can be removed:")
@@ -184,18 +181,60 @@ func removeSuperfluousPackages() {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err = cmd.Run()
+	return cmd.Run()
+}
+
+type logMonitor struct {
+	*os.File
+}
+
+func newLogMonitor(path string) (*logMonitor, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		log.Println(err)
+		return nil, err
+	}
+	_, err = f.Seek(0, os.SEEK_END)
+	if err != nil {
+		return nil, err
+	}
+	return &logMonitor{f}, nil
+}
+
+func (m *logMonitor) catchUp() (string, error) {
+	b, err := io.ReadAll(m)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func exitOnError(err error) {
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
 
 func main() {
 	newsCh := make(chan string, 10)
 	go readNews(newsCh)
-	pacman("-Sc", "--noconfirm")
-	pacman("-Syu", "--noconfirm")
-	removeSuperfluousPackages()
+
+	err := pacman("-Sc", "--noconfirm")
+	exitOnError(err)
+
+	logMon, err := newLogMonitor(PACMAN_LOGFILE_PATH)
+	exitOnError(err)
+
+	err = pacman("-Syu", "--noconfirm")
+	exitOnError(err)
+
+	logs, err := logMon.catchUp()
+	exitOnError(err)
+	fmt.Print(logs)
+
+	err = removeSuperfluousPackages()
+	exitOnError(err)
+
 	fmt.Println("\nArch Linux news:")
 	for s := range newsCh {
 		fmt.Printf("  - %s\n", s)
