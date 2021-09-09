@@ -1,10 +1,11 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,8 +15,10 @@ import (
 	"time"
 )
 
-const PACMAN_LOGFILE_PATH = "/var/log/pacman.log"
 const NEWSFEED_URL = "https://archlinux.org/feeds/news/"
+const PACMAN_LOG_PATH = "/var/log/pacman.log"
+
+var PACMAN_LOG_ALPM_MARKER = []byte(" [ALPM] ")
 
 type Feed struct {
 	XMLName xml.Name   `xml:"rss"`
@@ -163,7 +166,7 @@ func removeSuperfluousPackages() error {
 	if err != nil {
 		if err, ok := err.(*exec.ExitError); ok {
 			if err.ExitCode() == 1 {
-				fmt.Println("No superfluous packages.")
+				fmt.Println("\nNo superfluous packages.")
 				return nil
 			}
 		}
@@ -174,7 +177,7 @@ func removeSuperfluousPackages() error {
 		return nil
 	}
 
-	fmt.Println("Superfluous packages can be removed:")
+	fmt.Println("\nSuperfluous packages can be removed:")
 	args := []string{"pacman", "-Rs"}
 	args = append(args, pkgs...)
 	cmd = exec.Command("sudo", args...)
@@ -200,12 +203,8 @@ func newLogMonitor(path string) (*logMonitor, error) {
 	return &logMonitor{f}, nil
 }
 
-func (m *logMonitor) catchUp() (string, error) {
-	b, err := io.ReadAll(m)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+func (m *logMonitor) lines() *bufio.Scanner {
+	return bufio.NewScanner(m)
 }
 
 func exitOnError(err error) {
@@ -222,15 +221,24 @@ func main() {
 	err := pacman("-Sc", "--noconfirm")
 	exitOnError(err)
 
-	logMon, err := newLogMonitor(PACMAN_LOGFILE_PATH)
+	logMon, err := newLogMonitor(PACMAN_LOG_PATH)
 	exitOnError(err)
 
 	err = pacman("-Syu", "--noconfirm")
 	exitOnError(err)
 
-	logs, err := logMon.catchUp()
-	exitOnError(err)
-	fmt.Print(logs)
+	lines := logMon.lines()
+	printedHeading := false
+	for lines.Scan() {
+		line := lines.Bytes()
+		if bytes.Contains(line, PACMAN_LOG_ALPM_MARKER) {
+			if !printedHeading {
+				fmt.Println("\nALPM logs:")
+				printedHeading = true
+			}
+			fmt.Printf("%s\n", line)
+		}
+	}
 
 	err = removeSuperfluousPackages()
 	exitOnError(err)
