@@ -90,7 +90,7 @@ func readNews(ch chan<- string) {
 
 	req, err := http.NewRequest(http.MethodGet, NEWSFEED_URL, nil)
 	if err != nil {
-		ch <- "Failed to formulate request: " + err.Error()
+		ch <- "Arch Linux news: failed to formulate request: " + err.Error()
 		return
 	}
 	if state.LastModified != "" {
@@ -98,15 +98,15 @@ func readNews(ch chan<- string) {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		ch <- "Failed to send request: " + err.Error()
+		ch <- "Arch Linux news: failed to send request: " + err.Error()
 		return
 	}
 	if resp.StatusCode == http.StatusNotModified {
-		ch <- "No news (HTTP 304)"
+		ch <- "No Arch Linux news."
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
-		ch <- "Unexpected HTTP status: " + resp.Status
+		ch <- "Arch Linux news: unexpected HTTP status: " + resp.Status
 		return
 	}
 
@@ -128,14 +128,17 @@ func readNews(ch chan<- string) {
 	})
 
 	if len(items) == 0 {
-		ch <- "No news (empty RSS feed)"
+		ch <- "No Arch Linux news (empty RSS feed)."
 		return
 	}
 
 	gotAny := false
 	for _, item := range items {
 		if item.Time.After(state.LatestItemTime) {
-			ch <- fmt.Sprintf("%s: %s (%s)",
+			if !gotAny {
+				ch <- "Arch Linux news:"
+			}
+			ch <- fmt.Sprintf("  - %s: %s (%s)",
 				item.Time.Local().Format("2006-01-02 15:04"), item.Title, item.Link)
 			gotAny = true
 		}
@@ -144,7 +147,7 @@ func readNews(ch chan<- string) {
 	state.LatestItemTime = items[0].Time.Time
 
 	if !gotAny {
-		ch <- "No new news (HTTP 200)"
+		ch <- "No Arch Linux news (HTTP 200)."
 	}
 }
 
@@ -243,8 +246,8 @@ func main() {
 	err = removeSuperfluousPackages()
 	exitOnError(err)
 
-	fmt.Println("\nArch Linux news:")
+	fmt.Println()
 	for s := range newsCh {
-		fmt.Printf("  - %s\n", s)
+		fmt.Println(s)
 	}
 }
