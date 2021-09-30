@@ -13,6 +13,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pkg/diff"
+	diff_write "github.com/pkg/diff/write"
 )
 
 const NEWSFEED_URL = "https://archlinux.org/feeds/news/"
@@ -190,6 +193,17 @@ func removeSuperfluousPackages() error {
 	return cmd.Run()
 }
 
+func getChangelogs() (string, error) {
+	var output strings.Builder
+	cmd := exec.Command("pacman", "-Qc")
+	cmd.Stdout = &output
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return output.String(), nil
+}
+
 type logMonitor struct {
 	*os.File
 }
@@ -224,6 +238,9 @@ func main() {
 	err := pacman("-Sc", "--noconfirm")
 	exitOnError(err)
 
+	changelogsPre, err := getChangelogs()
+	exitOnError(err)
+
 	logMon, err := newLogMonitor(PACMAN_LOG_PATH)
 	exitOnError(err)
 
@@ -241,6 +258,26 @@ func main() {
 			}
 			fmt.Printf("%s\n", line)
 		}
+	}
+
+	changelogsPost, err := getChangelogs()
+	exitOnError(err)
+
+	if changelogsPre != changelogsPost {
+		// TODO: really we need to show per-package diffs
+		fmt.Println("\nChangelogs diff:")
+		err = diff.Text(
+			"Before", "After",
+			changelogsPre,
+			changelogsPost,
+			os.Stdout,
+			diff_write.TerminalColor(),
+		)
+		if err != nil {
+			fmt.Println(err)
+		}
+	} else {
+		fmt.Println("\nNo updated changelogs.")
 	}
 
 	err = removeSuperfluousPackages()
