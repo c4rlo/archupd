@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ const NEWSFEED_URL = "https://archlinux.org/feeds/news/"
 const PACMAN_LOG_PATH = "/var/log/pacman.log"
 
 var PACMAN_LOG_ALPM_MARKER = []byte(" [ALPM] ")
+var CHANGELOG_PACKAGE_REGEXP = regexp.MustCompile(`^Changelog for (.+):$`)
 
 type Feed struct {
 	XMLName xml.Name   `xml:"rss"`
@@ -193,15 +195,39 @@ func removeSuperfluousPackages() error {
 	return cmd.Run()
 }
 
-func getChangelogs() (string, error) {
-	var output strings.Builder
+func getChangelogs() (map[string]string, error) {
 	cmd := exec.Command("pacman", "-Qc")
-	cmd.Stdout = &output
-	cmd.Stderr = nil
-	if err := cmd.Run(); err != nil {
-		return "", err
+	outputReader, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
 	}
-	return output.String(), nil
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	result := make(map[string]string)
+	var currPkg string
+	var currLog strings.Builder
+	scanner := bufio.NewScanner(outputReader)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if matches := CHANGELOG_PACKAGE_REGEXP.FindSubmatch(line); matches != nil {
+			if currPkg != "" {
+				result[currPkg] = currLog.String()
+			}
+			currLog.Reset()
+			currPkg = string(matches[1])
+		} else {
+			currLog.Write(line)
+			currLog.WriteByte('\n')
+		}
+	}
+	if currPkg != "" {
+		result[currPkg] = currLog.String()
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 type logMonitor struct {
@@ -263,20 +289,27 @@ func main() {
 	changelogsPost, err := getChangelogs()
 	exitOnError(err)
 
-	if changelogsPre != changelogsPost {
-		// TODO: really we need to show per-package diffs
-		fmt.Println("\nChangelogs diff:")
-		err = diff.Text(
-			"Before", "After",
-			changelogsPre,
-			changelogsPost,
-			os.Stdout,
-			diff_write.TerminalColor(),
-		)
-		if err != nil {
-			fmt.Println(err)
+	shownChangelogDiff := false
+	for pkg, logPost := range changelogsPost {
+		if logPre, ok := changelogsPre[pkg]; ok && logPre != logPost {
+			if !shownChangelogDiff {
+				fmt.Println("\nChangelog diffs:\n")
+			}
+			err = diff.Text(
+				pkg+" (before)",
+				pkg+" (after)",
+				logPre,
+				logPost,
+				os.Stdout,
+				diff_write.TerminalColor(),
+			)
+			shownChangelogDiff = true
+			if err != nil {
+				fmt.Println(err)
+			}
 		}
-	} else {
+	}
+	if !shownChangelogDiff {
 		fmt.Println("\nNo updated changelogs.")
 	}
 
