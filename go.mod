@@ -1,4 +1,4 @@
-module github.com/c4rlo/updall
+module github.com/c4rlo/archupd
 
 go 1.17
 
