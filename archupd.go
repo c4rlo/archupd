@@ -63,7 +63,7 @@ func stateFileName() string {
 	if err != nil {
 		panic(err)
 	}
-	return filepath.Join(homePath, ".updall-state.json")
+	return filepath.Join(homePath, ".archupd-state.json")
 }
 
 func readState() State {
