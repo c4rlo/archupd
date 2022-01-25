@@ -7,7 +7,7 @@ url="https://github.com/c4rlo/archupd"
 license=('MIT')
 makedepends=('go')
 source=("$url/archive/refs/tags/$pkgver.tar.gz")
-sha256sums=('a61561256482c9824e78424a1b42342efcaf5baee8638adc15323352e37054b3')
+sha256sums=('1dbc8791c374e08e31d6a3baaa5d0233ab98a060ba9913b88b32c1aabce8b720')
 
 build() {
   cd "$pkgname-$pkgver"
