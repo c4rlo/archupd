@@ -61,11 +61,15 @@ type State struct {
 }
 
 func stateFileName() string {
-	homePath, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
+	stateHome := os.Getenv("XDG_STATE_HOME")
+	if stateHome == "" {
+		homePath, err := os.UserHomeDir()
+		if err != nil {
+			panic(err)
+		}
+		stateHome = filepath.Join(homePath, ".local", "state")
 	}
-	return filepath.Join(homePath, ".archupd-state.json")
+	return filepath.Join(stateHome, "archupd.json")
 }
 
 func readState() State {
@@ -83,7 +87,12 @@ func readState() State {
 }
 
 func writeState(state *State) {
-	f, err := os.Create(stateFileName())
+	fileName := stateFileName()
+	if err := os.MkdirAll(filepath.Dir(fileName), 0755); err != nil {
+		fmt.Println(err)
+		return
+	}
+	f, err := os.Create(fileName)
 	if err != nil {
 		fmt.Println(err)
 		return
