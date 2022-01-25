@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -69,7 +71,9 @@ func stateFileName() string {
 func readState() State {
 	f, err := os.Open(stateFileName())
 	if err != nil {
-		fmt.Println(err)
+		if !errors.Is(err, fs.ErrNotExist) {
+			fmt.Println(err)
+		}
 		return State{} // ignore err
 	}
 	defer f.Close()
@@ -119,21 +123,22 @@ func readNews(ch chan<- string) {
 		state.LastModified = lastMod[0]
 	}
 
-	defer writeState(&state)
-
 	decoder := xml.NewDecoder(resp.Body)
 	var feed Feed
 	if err = decoder.Decode(&feed); err != nil {
-		ch <- err.Error()
+		ch <- "Arch Linux news: failed to decode feed: " + err.Error()
 		return
 	}
+
+	defer writeState(&state)
+
 	items := feed.Items
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].Time.After(items[j].Time.Time)
 	})
 
 	if len(items) == 0 {
-		ch <- "No Arch Linux news (empty RSS feed)."
+		ch <- "No Arch Linux news (empty feed)."
 		return
 	}
 
@@ -152,7 +157,7 @@ func readNews(ch chan<- string) {
 	state.LatestItemTime = items[0].Time.Time
 
 	if !gotAny {
-		ch <- "No Arch Linux news (HTTP 200)."
+		ch <- "No Arch Linux news."
 	}
 }
 
