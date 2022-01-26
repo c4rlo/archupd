@@ -151,21 +151,21 @@ func readNews(ch chan<- string) {
 		return
 	}
 
-	gotAny := false
+	foundAny := false
 	for _, item := range items {
 		if item.Time.After(state.LatestItemTime) {
-			if !gotAny {
+			if !foundAny {
 				ch <- "Arch Linux news:"
 			}
 			ch <- fmt.Sprintf("  - %s: %s (%s)",
 				item.Time.Local().Format("2006-01-02 15:04"), item.Title, item.Link)
-			gotAny = true
+			foundAny = true
 		}
 	}
 
 	state.LatestItemTime = items[0].Time.Time
 
-	if !gotAny {
+	if !foundAny {
 		ch <- "No Arch Linux news."
 	}
 }
@@ -264,6 +264,32 @@ func (m *logMonitor) lines() *bufio.Scanner {
 	return bufio.NewScanner(m)
 }
 
+func showChangelogDiff(changelogsPre, changelogsPost map[string]string) {
+	foundAny := false
+	for pkg, logPost := range changelogsPost {
+		if logPre, ok := changelogsPre[pkg]; ok && logPre != logPost {
+			if !foundAny {
+				fmt.Println("\nChangelog diffs:\n")
+			}
+			err := diff.Text(
+				pkg+" (before)",
+				pkg+" (after)",
+				logPre,
+				logPost,
+				os.Stdout,
+				diff_write.TerminalColor(),
+			)
+			foundAny = true
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+	}
+	if !foundAny {
+		fmt.Println("\nNo updated changelogs.")
+	}
+}
+
 func exitOnError(err error) {
 	if err != nil {
 		fmt.Println(err)
@@ -288,47 +314,27 @@ func main() {
 	exitOnError(err)
 
 	lines := logMon.lines()
-	printedHeading := false
+	foundALPMLogs := false
 	for lines.Scan() {
 		line := lines.Bytes()
 		if bytes.Contains(line, PACMAN_LOG_ALPM_MARKER) {
-			if !printedHeading {
+			if !foundALPMLogs {
 				fmt.Println("\nALPM logs:")
-				printedHeading = true
+				foundALPMLogs = true
 			}
 			fmt.Printf("%s\n", line)
 		}
 	}
 
-	changelogsPost, err := getChangelogs()
-	exitOnError(err)
+	if foundALPMLogs {
+		changelogsPost, err := getChangelogs()
+		exitOnError(err)
 
-	shownChangelogDiff := false
-	for pkg, logPost := range changelogsPost {
-		if logPre, ok := changelogsPre[pkg]; ok && logPre != logPost {
-			if !shownChangelogDiff {
-				fmt.Println("\nChangelog diffs:\n")
-			}
-			err = diff.Text(
-				pkg+" (before)",
-				pkg+" (after)",
-				logPre,
-				logPost,
-				os.Stdout,
-				diff_write.TerminalColor(),
-			)
-			shownChangelogDiff = true
-			if err != nil {
-				fmt.Println(err)
-			}
-		}
-	}
-	if !shownChangelogDiff {
-		fmt.Println("\nNo updated changelogs.")
-	}
+		showChangelogDiff(changelogsPre, changelogsPost)
 
-	err = removeSuperfluousPackages()
-	exitOnError(err)
+		err = removeSuperfluousPackages()
+		exitOnError(err)
+	}
 
 	fmt.Println()
 	for s := range newsCh {
