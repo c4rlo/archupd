@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"flag"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -24,8 +25,30 @@ import (
 const NEWSFEED_URL = "https://archlinux.org/feeds/news/"
 const PACMAN_LOG_PATH = "/var/log/pacman.log"
 
+const HELP_STR = `
+  Arch Linux updater. Run without args and it will:
+
+  - Run "sudo pacman -Sc" to clean up old packages.
+  - Run "sudo pacman -Syu" to update outdated packages.
+  - Show relevant pacman logfile contents, which includes the old and new version of each package.
+  - Show any new package changelog entries.
+  - Offer to remove packages that have become unrequired.
+  - Display any new official Arch Linux news from RSS feed.
+`
+
 var PACMAN_LOG_ALPM_MARKER = []byte(" [ALPM] ")
 var CHANGELOG_PACKAGE_REGEXP = regexp.MustCompile(`^Changelog for (.+):$`)
+
+var helpFlag = false
+
+func init() {
+	const helpUsage = "show help"
+	flag.BoolVar(&helpFlag, "h", false, helpUsage)
+	flag.BoolVar(&helpFlag, "?", false, helpUsage)
+	flag.BoolVar(&helpFlag, "help", false, helpUsage)
+
+	flag.Usage = showHelp
+}
 
 type Feed struct {
 	XMLName xml.Name   `xml:"rss"`
@@ -53,6 +76,10 @@ func (t *RSSTime) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		return err
 	}
 	return nil
+}
+
+func showHelp() {
+	fmt.Printf("Usage: %s\n%s", os.Args[0], HELP_STR)
 }
 
 type State struct {
@@ -298,6 +325,12 @@ func exitOnError(err error) {
 }
 
 func main() {
+	flag.Parse()
+	if helpFlag {
+		showHelp()
+		return
+	}
+
 	newsCh := make(chan string, 10)
 	go readNews(newsCh)
 
