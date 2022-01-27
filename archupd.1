@@ -1,0 +1,31 @@
+.TH ARCHUPD 1
+.SH NAME
+archupd \- Arch Linux updater
+.SH SYNOPSIS
+.B archupd
+.PP
+.B archupd
+{\fB\-?\fR|\fB\-h\fR|\fB\-help\fR|\fB\-\-help\fR}
+.SH DESCRIPTION
+Arch Linux updater. Run without args and it will:
+.PP
+.IP \(bu
+Run
+.B sudo pacman -Sc
+to clean up old packages.
+.IP \(bu
+Run
+.B sudo pacman -Syu
+to update outdated packages.
+.IP \(bu
+Show relevant pacman logfile contents, which includes the old and new version of each package.
+.IP \(bu
+Show any new package changelog entries.
+.IP \(bu
+Offer to remove packages that have become unrequired.
+.IP \(bu
+Display any new official Arch Linux news from RSS feed.
+.SH OPTIONS
+.TP
+.BR \-? ", " \-h ", " \-help ", " \-\-help
+Show help.
