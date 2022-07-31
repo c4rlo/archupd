@@ -208,7 +208,7 @@ func pacman(args ...string) error {
 
 func removeSuperfluousPackages() error {
 	var output strings.Builder
-	cmd := exec.Command("sudo", "pacman", "-Qqtd")
+	cmd := exec.Command("pacman", "-Qqtd")
 	cmd.Stdout = &output
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
