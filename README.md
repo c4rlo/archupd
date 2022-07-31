@@ -1,6 +1,7 @@
 # archupd
 
-Arch Linux updater, [available from the AUR](https://aur.archlinux.org/packages/archupd).
+Arch Linux updater,
+[available from the AUR](https://aur.archlinux.org/packages/archupd).
 
 Does the following:
 
@@ -13,4 +14,4 @@ Does the following:
     interesting.
 - Offer to remove packages that have become unrequired.
 - Display any new official Arch Linux news from RSS feed.
-  - Feed contents are retrieved in the background.
+  - Feed contents are retrieved in the background while doing all of the above.
